@@ -8,6 +8,7 @@ const crypto=require('node:crypto');
 const tempDir=fs.mkdtempSync(path.join(os.tmpdir(),'campus-workflow-'));
 const uploadDir=fs.mkdtempSync(path.join(os.tmpdir(),'campus-uploads-'));
 process.env.CAMPUS_DATA_DIR=tempDir;
+process.env.CAMPUS_TEST_DATABASE='1';
 const {app,db,passwordHash}=require('./server');
 const password=crypto.randomBytes(24).toString('base64url');
 const staffEmail=`workflow-staff-${Date.now()}@example.edu`;

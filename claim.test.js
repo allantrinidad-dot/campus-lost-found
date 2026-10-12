@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(),'campus-claim-'));
 process.env.CAMPUS_DATA_DIR=tempDir;
+process.env.CAMPUS_TEST_DATABASE='1';
 const { app, db, passwordHash } = require('./server');
 const email=`claim-${Date.now()}@example.edu`, password=crypto.randomBytes(24).toString('base64url');
 const userId=Number(db.prepare("INSERT INTO users(email,password_hash,role) VALUES(?,?,'student')").run(email,passwordHash(password)).lastInsertRowid);

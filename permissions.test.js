@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(),'campus-permissions-'));
 process.env.CAMPUS_DATA_DIR=tempDir;
+process.env.CAMPUS_TEST_DATABASE='1';
 const { app, db, passwordHash } = require('./server');
 
 const suffix = `${Date.now()}-${Math.random()}`;

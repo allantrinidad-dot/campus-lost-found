@@ -10,7 +10,7 @@ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'campus-restart-'));
 let child,port;
 const password=crypto.randomBytes(24).toString('base64url');
 const sessionSecret=crypto.randomBytes(32).toString('hex');
-function launch(){child=spawn(process.execPath,[path.join(__dirname,'server.js')],{env:{...process.env,NODE_ENV:'production',CAMPUS_DATA_DIR:dir,PORT:String(port),SESSION_SECRET:sessionSecret}});return new Promise((resolve,reject)=>{let output='';const timeout=setTimeout(()=>reject(new Error(`Server failed to start: ${output}`)),8000);child.stdout.on('data',chunk=>{output+=chunk;if(output.includes('listening on 0.0.0.0')){clearTimeout(timeout);resolve()}});child.stderr.on('data',chunk=>{output+=chunk});child.once('error',reject);});}
+function launch(){child=spawn(process.execPath,[path.join(__dirname,'server.js')],{env:{...process.env,NODE_ENV:'test',CAMPUS_TEST_DATABASE:'1',SESSION_COOKIE_SECURE:'true',CAMPUS_DATA_DIR:dir,PORT:String(port),SESSION_SECRET:sessionSecret}});return new Promise((resolve,reject)=>{let output='';const timeout=setTimeout(()=>reject(new Error(`Server failed to start: ${output}`)),8000);child.stdout.on('data',chunk=>{output+=chunk;if(output.includes('listening on 0.0.0.0')){clearTimeout(timeout);resolve()}});child.stderr.on('data',chunk=>{output+=chunk});child.once('error',reject);});}
 async function freePort(){return new Promise(resolve=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p))})})}
 async function stop(){if(!child)return;const current=child;child=null;await new Promise(resolve=>{current.once('exit',resolve);current.kill('SIGTERM')})}
 test('student item remains in SQLite after page refresh and server restart',async()=>{

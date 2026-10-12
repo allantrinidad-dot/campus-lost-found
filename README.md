@@ -1,45 +1,66 @@
 # Campus Lost & Found
 
-This project keeps the existing HTML and CSS design and adds a local Express and SQLite backend. Public visitors can browse published items. Students can register, sign in, post reports, manage their own reports, and submit one private claim per item. Staff accounts can review reports and claims.
+This project keeps its existing HTML and CSS design. The Node.js and Express server now uses Turso's SQLite-compatible cloud database through the asynchronous `@libsql/client` package. Visitors can browse public listings; students can create and manage their own listings and submit claims; staff can manage listings and review claims. Claim proof and account details are restricted by server-side permissions. Item photos are saved in the database as image data.
 
 ## Requirements
 
-- Node.js 22.13 or newer (the server uses Node's built-in SQLite module)
+- Node.js 22.13 or newer
 - npm
+- A free Turso account and database for a shared/deployed instance
 
-## Start the app
+## Create a free Turso database
 
-From this folder, run:
+1. Create or sign in to a Turso account at <https://turso.tech> and stay on the Free plan. No paid plan is needed for this class demo.
+2. Install and sign in to the Turso CLI using Turso's [CLI installation guide](https://docs.turso.tech/cli/installation).
+3. Create a new, empty database for this website:
+
+   ```sh
+   turso db create campus-lost-found
+   ```
+
+4. Get the database URL and create a database access token:
+
+   ```sh
+   turso db show --url campus-lost-found
+   turso db tokens create campus-lost-found
+   ```
+
+5. Copy the URL and token somewhere private temporarily. The token is a secret. Do not paste it into source code, README files, GitHub, screenshots, or class materials.
+
+The application creates its tables the first time it connects. It does not import or alter `data/campus.sqlite`; the hosted database is a separate empty database. The production startup process then adds hosted demo users and sample records to that remote database only.
+
+## Deploy on Render Free
+
+The checked-in `render.yaml` configures a Free Node web service with no persistent disk. Render's local filesystem is temporary, so all app data, sessions, and photos are kept in Turso instead.
+
+1. Push the reviewed project to GitHub when you are ready. `node_modules/`, `.env`, and local SQLite files must stay out of Git.
+2. In Render, select **New → Blueprint**, connect the GitHub repository, and apply the Blueprint. Confirm that the web service plan is **Free**.
+3. In the Render service's **Environment** settings, add these values:
+   - `TURSO_DATABASE_URL`: the value from `turso db show --url campus-lost-found`.
+   - `TURSO_AUTH_TOKEN`: the token from `turso db tokens create campus-lost-found`.
+   - `DEMO_STUDENT_PASSWORD`, `DEMO_STAFF_PASSWORD`, and `DEMO_CLAIMANT_PASSWORD`: separate strong passwords, at least 16 characters each. Store them as private environment values and share them with your professor privately.
+   - `SESSION_SECRET`: a random secret at least 32 characters long. Render's Blueprint generates this automatically; keep it private.
+4. Save the environment settings and deploy. The startup command initializes the remote schema, creates the demo accounts when missing, adds four sample items with photos and one pending claim, then starts the server.
+5. Open the Render URL (for example, `https://campus-lost-found.onrender.com`) and check `/api/health`. Send the public URL and demo emails to your professor. Share the student/staff passwords privately, not on the public site.
+
+Demo emails are `demo.student@example.edu`, `demo.staff@example.edu`, and `demo.claimant@example.edu`. Existing accounts are left unchanged on restart. Changing a Render demo password will not change a password already stored in Turso; use a new empty demo database if you need fresh test accounts.
+
+### Free service limits
+
+Render Free services sleep after 15 minutes without visitors and can take about a minute to wake up. Their filesystem is temporary, which is why the SQLite database is not stored there. Turso's current Free plan lists 5 GB database storage, 500 million row reads and 10 million row writes each month. Photos count toward database storage. Keep the Turso account on Free and leave paid upgrades or usage overages disabled. For this class demo, the sample photos are small; user-uploaded photos use more space. Render Free services also have monthly usage limits and can be suspended if those limits are reached.
+
+## Run locally
+
+Local server commands connect to the same Turso database whose credentials you set. To keep the local SQLite database completely separate, set the two connection variables in your shell (or use a private local `.env` loader that is excluded from Git):
 
 ```sh
-npm install
+export TURSO_DATABASE_URL='libsql://your-database-your-account.turso.io'
+export TURSO_AUTH_TOKEN='your-private-database-token'
+npm ci
 npm start
 ```
 
-Then open <http://localhost:3000>. SQLite data is stored in `data/campus.sqlite`; this folder is created automatically and is excluded from version control. To prepare a demo database before starting the server, run the sample account and sample data commands below.
-
-## Deploy on Render
-
-The included `render.yaml` describes a Render web service with a persistent disk mounted at `/var/data`. The app uses `CAMPUS_DATA_DIR` for both SQLite app data and login sessions, so the database is stored on that disk instead of Render's temporary filesystem. The service requires a paid Render web-service plan because Render does not provide persistent disks to free web services. A disk-backed service runs one instance at a time.
-
-1. Push this project to a GitHub repository. Do not include `data/`, `.env`, or any passwords.
-2. In Render, choose **New → Blueprint** and connect the repository containing `render.yaml`. Review the proposed service and disk, then apply it. The blueprint uses `npm ci`, `npm run start:production`, and `/api/health` for its health check.
-3. When Render asks for the three `DEMO_*_PASSWORD` values, generate separate strong passwords (at least 16 characters) and enter them as secret environment values. Do not add them to the repository or publish them on the website. Render generates `SESSION_SECRET` privately. `NODE_ENV=production` enables secure HTTPS cookies and the trusted Render proxy.
-4. Wait for the deploy to finish. `start:production` creates the three demo accounts and sample listings on the persistent disk before starting Express. It never prints production passwords. The account seed is safe to run again: existing accounts are left unchanged and sample listings/claims are added only if missing.
-5. Send the professor the public `https://<service-name>.onrender.com` link and the student/staff demo passwords through a private channel. The passwords are deliberately not displayed publicly. The claimant account is available too if the professor wants to try the claims workflow.
-
-Demo account emails are `demo.student@example.edu`, `demo.staff@example.edu`, and `demo.claimant@example.edu`. On later restarts the seed command will not change an existing account's password; changing an environment password alone does not reset it. Keep the original values safe. Do not run the production seeder against your local `data/campus.sqlite`.
-
-## Test accounts
-
-Generate sample student, claimant student, and staff accounts, then add four example items with photos and a pending claim:
-
-```sh
-npm run seed:demo
-npm run seed:sample
-```
-
-The account command prints randomly generated passwords once. Save them privately. It leaves existing accounts unchanged. The sample-data command only adds missing demo listings/claims and is safe to run again. The student account owns the listings; the claimant account has a pending claim for a published item. Students can also register from the Sign in button; public registration always creates a student, never staff. Do not put generated passwords in source control.
+Open <http://localhost:3000>. Do not run the hosted demo seed commands against a database containing personal or real user data. Use a separate empty Turso database for demonstrations.
 
 ## Tests
 
@@ -47,10 +68,12 @@ The account command prints randomly generated passwords once. Save them privatel
 npm test
 ```
 
-The automated tests cover visitor, student, and staff permissions; item add/edit/delete; claim approval/rejection and duplicate prevention; JPG/PNG validation, oversized/invalid uploads and photo replacement; search and no-result filters; rapid duplicate submissions; browser-back modal closing; persistence after refresh and server restart; secure production cookies and session persistence; expiration; and production demo setup without logging passwords. Test data and image fixtures use temporary directories.
+The automated tests cover visitor, student, and staff permissions; adding/editing/deleting items; claim submission, review, and duplicate prevention; photos and upload validation; search and filters; private claim proof; idempotent rapid submissions; persistence across refresh and server restart; sessions; and demo-data setup. Test runs use disposable SQLite files in temporary folders, never `data/campus.sqlite` or your Turso database.
 
-## Security notes
+## Security and data notes
 
-Passwords are hashed with Node's scrypt and claim proof is only returned by a staff-only endpoint. Login sessions use HTTP-only, same-site cookies and are stored in SQLite. In production, the cookie is secure for HTTPS, the session secret must be at least 32 characters, and the app trusts Render's HTTPS proxy. Keep the Render disk and demo passwords private. Back up the database before changing or removing the disk.
-
-The current browser-localStorage content is left untouched as a local backup; the server does not automatically import it because the backend cannot safely identify its owner. Existing records stored only in a browser must be re-entered after signing in.
+- Passwords are hashed with Node's scrypt. Staff demo passwords are only read from private environment variables and are not printed by the production seeder.
+- Production sessions use secure, HTTP-only, same-site cookies. Session rows live in Turso and require `SESSION_SECRET`.
+- Visitors and students cannot read claim proof. The staff-only claims endpoint returns proof and claimant contact email.
+- Photos and sessions are stored in the remote Turso database, not in Render files.
+- This migration does not copy existing browser localStorage data or the local SQLite database into Turso. Local data remains as-is and is not opened by the production app.
