@@ -1,0 +1,22 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const request = require('supertest');
+const os = require('node:os');
+const path = require('node:path');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(),'campus-claim-'));
+process.env.CAMPUS_DATA_DIR=tempDir;
+const { app, db, passwordHash } = require('./server');
+const email=`claim-${Date.now()}@example.edu`, password=crypto.randomBytes(24).toString('base64url');
+const userId=Number(db.prepare("INSERT INTO users(email,password_hash,role) VALUES(?,?,'student')").run(email,passwordHash(password)).lastInsertRowid);
+const ownerId=Number(db.prepare("INSERT INTO users(email,password_hash,role) VALUES(?,?,'student')").run(`owner-${email}`,passwordHash(password)).lastInsertRowid);
+const itemId=Number(db.prepare("INSERT INTO items(owner_id,title,category,location,date,description,status) VALUES(?,?,?,?,?,?,'published')").run(ownerId,'Demo item','Other','Library','2026-10-01','Test item').lastInsertRowid);
+const student=request.agent(app);
+test('duplicate claim submissions are rejected and leave one private claim',async()=>{
+  await student.post('/api/login').send({email,password}).expect(200);
+  const submissions=await Promise.all([1,2].map(()=>student.post(`/api/items/${itemId}/claims`).send({proof:'private identifying detail'})));
+  assert.deepEqual(submissions.map(r=>r.status).sort(),[201,409]);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM claims WHERE item_id=?').get(itemId).count,1);
+});
+test.after(()=>{db.prepare('DELETE FROM claims WHERE item_id=?').run(itemId);db.prepare('DELETE FROM items WHERE id=?').run(itemId);db.prepare('DELETE FROM users WHERE id IN (?,?)').run(userId,ownerId);db.close();fs.rmSync(tempDir,{recursive:true,force:true});});

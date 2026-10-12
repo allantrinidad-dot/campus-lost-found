@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: campus-lost-found
+    runtime: node
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run start:production
+    healthCheckPath: /api/health
+    disk:
+      name: campus-lost-found-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CAMPUS_DATA_DIR
+        value: /var/data
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DEMO_STUDENT_PASSWORD
+        sync: false
+      - key: DEMO_STAFF_PASSWORD
+        sync: false
+      - key: DEMO_CLAIMANT_PASSWORD
+        sync: false

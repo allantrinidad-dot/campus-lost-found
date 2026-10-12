@@ -1,0 +1,28 @@
+{
+  "name": "campus-lost-found",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:production": "node seed-demo.js && node seed-sample-data.js && node server.js",
+    "test": "node --test expiration.test.js claim.test.js permissions.test.js workflow.test.js persistence.test.js seed.test.js frontend.test.js",
+    "seed:demo": "node seed-demo.js",
+    "seed:sample": "node seed-sample-data.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.3.0",
+    "express-session": "^1.19.0"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "supertest": "^7.3.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
