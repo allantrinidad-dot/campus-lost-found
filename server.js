@@ -32,6 +32,8 @@ app.use(express.static(__dirname));
 const user = req => req?.session?.user || null;
 const requireStudent = (req, res, next) => user(req) ? next() : res.status(401).json({ error: 'Sign in as a student or staff member.' });
 const requireStaff = (req, res, next) => user(req)?.role === 'staff' ? next() : res.status(user(req) ? 403 : 401).json({ error: 'Staff access required.' });
+const isInviteAdmin = req => !!process.env.STAFF_INVITE_ADMIN_EMAIL && user(req)?.email === process.env.STAFF_INVITE_ADMIN_EMAIL.trim().toLowerCase();
+const requireInviteAdmin = (req, res, next) => requireStaff(req, res, () => isInviteAdmin(req) ? next() : res.status(403).json({ error: 'Invitation administrator access required.' }));
 function verify(password, stored) { const [salt, key] = stored.split(':'); if (!key) return false; const actual = crypto.scryptSync(password, salt, 64); return crypto.timingSafeEqual(actual, Buffer.from(key, 'hex')); }
 function passwordHash(password) { const salt = crypto.randomBytes(16).toString('hex'); return `${salt}:${crypto.scryptSync(password, salt, 64).toString('hex')}`; }
 function publicItem(row, req) { const { owner_id, ...item } = row; item.canEdit = !!user(req) && Number(user(req).id) === Number(owner_id); return item; }
@@ -46,7 +48,7 @@ function validImageData(value) {
 }
 async function expireItems() { await q("UPDATE items SET status='expired' WHERE status IN ('published','pending') AND julianday('now') - julianday(posted_at) >= 30"); }
 
-app.get('/api/me', (req, res) => res.json({ user: user(req) }));
+app.get('/api/me', (req, res) => res.json({ user: user(req), canInviteStaff: isInviteAdmin(req) }));
 app.post('/api/register', async (req, res) => {
   const { email, password } = req.body || {};
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '') || typeof password !== 'string' || password.length < 10) return res.status(400).json({ error: 'Use a valid email and a password of at least 10 characters.' });
@@ -56,6 +58,32 @@ app.post('/api/register', async (req, res) => {
     req.session.user = { id: idOf(result), email: normalizedEmail, role: 'student' };
     res.status(201).json({ user: user(req) });
   } catch { res.status(409).json({ error: 'That account already exists.' }); }
+});
+app.post('/api/staff/invitations', requireInviteAdmin, async (req, res) => {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  await q('INSERT INTO staff_invitations(token_hash,created_by,expires_at) VALUES(?,?,?)', [tokenHash, user(req).id, expiresAt]);
+  res.status(201).json({ invitationUrl: `/invite.html?token=${token}`, expiresAt });
+});
+app.post('/api/staff/invitations/accept', async (req, res) => {
+  const { token, email, password } = req.body || {};
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,60}$/.test(token) || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || typeof password !== 'string' || password.length < 10) return res.status(400).json({ error: 'Enter a valid email and a password of at least 10 characters.' });
+  const normalizedEmail = email.trim().toLowerCase();
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const tx = await db.transaction('write');
+  try {
+    const found = await tx.execute({ sql: 'SELECT id FROM staff_invitations WHERE token_hash=? AND used_at IS NULL AND expires_at>?', args: [tokenHash, Date.now()] });
+    if (!found.rows[0]) { await tx.rollback(); return res.status(400).json({ error: 'This invitation is invalid, expired, or already used.' }); }
+    const inviteId = found.rows[0].id;
+    const consumed = await tx.execute({ sql: 'UPDATE staff_invitations SET used_at=? WHERE id=? AND used_at IS NULL AND expires_at>?', args: [Date.now(), inviteId, Date.now()] });
+    if (!consumed.rowsAffected) { await tx.rollback(); return res.status(400).json({ error: 'This invitation is invalid, expired, or already used.' }); }
+    const result = await tx.execute({ sql: "INSERT INTO users(email,password_hash,role) VALUES(?,?,'staff')", args: [normalizedEmail, passwordHash(password)] });
+    const id = idOf(result);
+    await tx.commit();
+    req.session.user = { id, email: normalizedEmail, role: 'staff' };
+    res.status(201).json({ user: user(req) });
+  } catch (error) { await tx.rollback(); if (/unique|constraint/i.test(error.message)) return res.status(409).json({ error: 'That account already exists.' }); throw error; }
 });
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body || {};

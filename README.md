@@ -38,16 +38,24 @@ The checked-in `render.yaml` configures a Free Node web service with no persiste
 3. In the Render service's **Environment** settings, add these values:
    - `TURSO_DATABASE_URL`: the value from `turso db show --url campus-lost-found`.
    - `TURSO_AUTH_TOKEN`: the token from `turso db tokens create campus-lost-found`.
-   - `DEMO_STUDENT_PASSWORD`, `DEMO_STAFF_PASSWORD`, and `DEMO_CLAIMANT_PASSWORD`: separate strong passwords, at least 16 characters each. Store them as private environment values and share them with your professor privately.
+   - `DEMO_STUDENT_PASSWORD` and `DEMO_CLAIMANT_PASSWORD`: separate strong passwords, at least 16 characters each. Store them as private environment values. `STAFF_INVITE_ADMIN_EMAIL`: set this to the email of the existing staff account authorized to create invitations (for the demo account, `demo.staff@example.edu`). The staff account also needs a strong password configured with `DEMO_STAFF_PASSWORD`.
    - `SESSION_SECRET`: a random secret at least 32 characters long. Render's Blueprint generates this automatically; keep it private.
 4. Save the environment settings and deploy. The startup command initializes the remote schema, creates the demo accounts when missing, adds four sample items with photos and one pending claim, then starts the server.
-5. Open the Render URL (for example, `https://campus-lost-found.onrender.com`) and check `/api/health`. Send the public URL and demo emails to your professor. Share the student/staff passwords privately, not on the public site.
+5. Open the Render URL (for example, `https://campus-lost-found.onrender.com`) and check `/api/health`. Send the public URL and demo student email to your professor. Do not share a staff password; create a private invitation instead.
 
 Demo emails are `demo.student@example.edu`, `demo.staff@example.edu`, and `demo.claimant@example.edu`. Existing accounts are left unchanged on restart. Changing a Render demo password will not change a password already stored in Turso; use a new empty demo database if you need fresh test accounts.
 
 ### Free service limits
 
 Render Free services sleep after 15 minutes without visitors and can take about a minute to wake up. Their filesystem is temporary, which is why the SQLite database is not stored there. Turso's current Free plan lists 5 GB database storage, 500 million row reads and 10 million row writes each month. Photos count toward database storage. Keep the Turso account on Free and leave paid upgrades or usage overages disabled. For this class demo, the sample photos are small; user-uploaded photos use more space. Render Free services also have monthly usage limits and can be suspended if those limits are reached.
+
+## Invite a staff member
+
+Set `STAFF_INVITE_ADMIN_EMAIL` in the service environment to the email of an existing staff account. Only that signed-in staff account can create invitations. For a fresh demo deployment, use `demo.staff@example.edu` and sign in with its privately stored `DEMO_STAFF_PASSWORD`. Existing database rows and content are preserved by startup.
+
+After deployment, sign in as that administrator, open **Staff desk**, and choose **Create invitation**. The private link is copied to the clipboard. Send it directly to your professor through a private channel. It expires after seven days and can create one account; your professor enters his own email and chooses a password of at least 10 characters. The server stores only a SHA-256 hash of each invitation token. Ordinary public Sign Up always creates a student account, even if a caller submits a `role` field.
+
+For local use, set `STAFF_INVITE_ADMIN_EMAIL` in the same shell as the Turso connection values before starting `npm start`. Never paste invitation links or passwords into GitHub, issue trackers, screenshots, or logs.
 
 ## Run locally
 
@@ -68,7 +76,7 @@ Open <http://localhost:3000>. Do not run the hosted demo seed commands against a
 npm test
 ```
 
-The automated tests cover visitor, student, and staff permissions; adding/editing/deleting items; claim submission, review, and duplicate prevention; photos and upload validation; search and filters; private claim proof; idempotent rapid submissions; persistence across refresh and server restart; sessions; and demo-data setup. Test runs use disposable SQLite files in temporary folders, never `data/campus.sqlite` or your Turso database.
+The automated tests cover visitor, student, and staff permissions; adding/editing/deleting items; claim submission, review, and duplicate prevention; photos and upload validation; search and filters; private claim proof; idempotent rapid submissions; persistence across refresh and server restart; sessions; demo-data setup, and staff invitation authorization, expiry, one-time use, and registration. Test runs use disposable SQLite files in temporary folders, never `data/campus.sqlite` or your Turso database.
 
 ## Security and data notes
 

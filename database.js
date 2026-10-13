@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS claims(id INTEGER PRIMARY KEY, item_id INTEGER NOT NU
 CREATE TABLE IF NOT EXISTS item_requests(owner_id INTEGER NOT NULL REFERENCES users(id), request_key TEXT NOT NULL, item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE, PRIMARY KEY(owner_id, request_key));
 CREATE TABLE IF NOT EXISTS sessions(sid TEXT PRIMARY KEY, expires INTEGER NOT NULL, data TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions(expires);
+CREATE TABLE IF NOT EXISTS staff_invitations(id INTEGER PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, created_by INTEGER NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at INTEGER NOT NULL, used_at INTEGER);
 `;
 
 function createDatabase() {
