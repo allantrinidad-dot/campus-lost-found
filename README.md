@@ -57,6 +57,18 @@ After deployment, sign in as that administrator, open **Staff desk**, and choose
 
 For local use, set `STAFF_INVITE_ADMIN_EMAIL` in the same shell as the Turso connection values before starting `npm start`. Never paste invitation links or passwords into GitHub, issue trackers, screenshots, or logs.
 
+## Preview the redesign safely
+
+To preview locally without connecting to Turso, use a temporary SQLite database. This keeps local preview data separate from the live Render/Turso site. Run `npm ci` once, then run this in a terminal from the project folder:
+
+```sh
+preview_dir="$(mktemp -d)"
+trap 'rm -rf "$preview_dir"' EXIT
+NODE_ENV=development CAMPUS_TEST_DATABASE=1 CAMPUS_DATA_DIR="$preview_dir" PORT=3000 npm start
+```
+
+Open <http://localhost:3000>, create a local student account, and try the responsive layout and item flows. Stop the server with **Ctrl+C**; the temporary preview database is then removed. The app starts with an empty preview database, and none of these commands write to Turso or Render.
+
 ## Run locally
 
 Local server commands connect to the same Turso database whose credentials you set. To keep the local SQLite database completely separate, set the two connection variables in your shell (or use a private local `.env` loader that is excluded from Git):
@@ -76,7 +88,7 @@ Open <http://localhost:3000>. Do not run the hosted demo seed commands against a
 npm test
 ```
 
-The automated tests cover visitor, student, and staff permissions; adding/editing/deleting items; claim submission, review, and duplicate prevention; photos and upload validation; search and filters; private claim proof; idempotent rapid submissions; persistence across refresh and server restart; sessions; demo-data setup, and staff invitation authorization, expiry, one-time use, and registration. Test runs use disposable SQLite files in temporary folders, never `data/campus.sqlite` or your Turso database.
+The automated tests cover visitor, student, and staff permissions; adding/editing/deleting items; claim submission, review, and duplicate prevention; photos and upload validation; search and filters; private claim proof; idempotent rapid submissions; persistence across refresh and server restart; sessions; demo-data setup; staff invitation authorization, expiry, one-time use, and registration; scoped student claim history; invalid input rejection; and responsive layout breakpoints. Test runs use disposable SQLite files in temporary folders, never `data/campus.sqlite` or your Turso database.
 
 ## Security and data notes
 

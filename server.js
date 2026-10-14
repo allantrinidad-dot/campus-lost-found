@@ -46,14 +46,21 @@ function validImageData(value) {
   if (match[1] === 'png') return bytes.length >= 45 && bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) && bytes.readUInt32BE(8) === 13 && bytes.toString('ascii', 12, 16) === 'IHDR' && bytes.toString('ascii', bytes.length - 8, bytes.length - 4) === 'IEND';
   return bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
 }
+function validItemDetails(item) {
+  const categories = ['Electronics', 'Keys & Cards', 'Clothing', 'Books', 'Accessories', 'Other'];
+  const date = typeof item.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.date) && !Number.isNaN(Date.parse(`${item.date}T00:00:00Z`)) && new Date(`${item.date}T00:00:00Z`).toISOString().slice(0, 10) === item.date;
+  return typeof item.title === 'string' && item.title.trim().length > 0 && item.title.trim().length <= 80 &&
+    categories.includes(item.category) && typeof item.location === 'string' && item.location.trim().length > 0 && item.location.trim().length <= 120 &&
+    date && item.date <= new Date().toISOString().slice(0, 10) && typeof item.description === 'string' && item.description.trim().length > 0 && item.description.trim().length <= 800;
+}
 async function expireItems() { await q("UPDATE items SET status='expired' WHERE status IN ('published','pending') AND julianday('now') - julianday(posted_at) >= 30"); }
 
 app.get('/api/me', (req, res) => res.json({ user: user(req), canInviteStaff: isInviteAdmin(req) }));
 app.post('/api/register', async (req, res) => {
   const { email, password } = req.body || {};
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '') || typeof password !== 'string' || password.length < 10) return res.status(400).json({ error: 'Use a valid email and a password of at least 10 characters.' });
+  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || typeof password !== 'string' || password.length < 10 || password.length > 128) return res.status(400).json({ error: 'Use a valid email and a password between 10 and 128 characters.' });
   try {
-    const normalizedEmail = email.toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
     const result = await q("INSERT INTO users(email,password_hash,role) VALUES(?,?,'student')", [normalizedEmail, passwordHash(password)]);
     req.session.user = { id: idOf(result), email: normalizedEmail, role: 'student' };
     res.status(201).json({ user: user(req) });
@@ -68,7 +75,7 @@ app.post('/api/staff/invitations', requireInviteAdmin, async (req, res) => {
 });
 app.post('/api/staff/invitations/accept', async (req, res) => {
   const { token, email, password } = req.body || {};
-  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,60}$/.test(token) || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || typeof password !== 'string' || password.length < 10) return res.status(400).json({ error: 'Enter a valid email and a password of at least 10 characters.' });
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{40,60}$/.test(token) || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || typeof password !== 'string' || password.length < 10 || password.length > 128) return res.status(400).json({ error: 'Enter a valid email and a password between 10 and 128 characters.' });
   const normalizedEmail = email.trim().toLowerCase();
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
   const tx = await db.transaction('write');
@@ -88,7 +95,7 @@ app.post('/api/staff/invitations/accept', async (req, res) => {
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body || {};
   const row = await get('SELECT * FROM users WHERE email=?', [String(email || '').toLowerCase()]);
-  if (!row || !verify(String(password || ''), row.password_hash)) return res.status(401).json({ error: 'Email or password is incorrect.' });
+  if (!row || String(password || '').length > 1024 || !verify(String(password || ''), row.password_hash)) return res.status(401).json({ error: 'Email or password is incorrect.' });
   req.session.user = { id: Number(row.id), email: row.email, role: row.role };
   res.json({ user: user(req) });
 });
@@ -103,7 +110,7 @@ app.get('/api/items', async (req, res) => {
 });
 app.post('/api/items', requireStudent, async (req, res) => {
   const { title, category, location, date, description, photo, emoji = '📦' } = req.body || {};
-  if (!title || !category || !location || !date || !description || !validImageData(photo)) return res.status(400).json({ error: 'Complete all required fields and attach a valid JPG, PNG, or WebP image under 10 MB.' });
+  if (!validItemDetails({ title, category, location, date, description }) || !validImageData(photo)) return res.status(400).json({ error: 'Check the item details and attach a valid JPG, PNG, or WebP image under 10 MB.' });
   const requestKey = req.get('Idempotency-Key');
   if (requestKey && !/^[A-Za-z0-9_-]{8,100}$/.test(requestKey)) return res.status(400).json({ error: 'Invalid submission key.' });
   if (requestKey) {
@@ -112,7 +119,7 @@ app.post('/api/items', requireStudent, async (req, res) => {
   }
   const tx = await db.transaction('write');
   try {
-    const result = await tx.execute({ sql: "INSERT INTO items(owner_id,title,category,location,date,description,photo,emoji,status) VALUES(?,?,?,?,?,?,?,?, 'pending')", args: [user(req).id, title, category, location, date, description, photo, emoji] });
+    const result = await tx.execute({ sql: "INSERT INTO items(owner_id,title,category,location,date,description,photo,emoji,status) VALUES(?,?,?,?,?,?,?,?, 'pending')", args: [user(req).id, title.trim(), category, location.trim(), date, description.trim(), photo, emoji] });
     const itemId = idOf(result);
     if (requestKey) await tx.execute({ sql: 'INSERT INTO item_requests(owner_id,request_key,item_id) VALUES(?,?,?)', args: [user(req).id, requestKey, itemId] });
     await tx.commit();
@@ -120,12 +127,15 @@ app.post('/api/items', requireStudent, async (req, res) => {
   } catch (error) { await tx.rollback(); if (requestKey && /unique|constraint/i.test(error.message)) { const old = await get('SELECT i.* FROM item_requests r JOIN items i ON i.id=r.item_id WHERE r.owner_id=? AND r.request_key=?', [user(req).id, requestKey]); if (old) return res.status(200).json(publicItem(old, req)); } throw error; }
 });
 app.patch('/api/items/:id', requireStudent, async (req, res) => {
+  const body = req.body || {};
   const item = await get('SELECT * FROM items WHERE id=?', [req.params.id]);
   if (!item) return res.sendStatus(404);
   if (user(req).role !== 'staff' && Number(item.owner_id) !== Number(user(req).id)) return res.sendStatus(403);
-  if (req.body.photo !== undefined && !validImageData(req.body.photo)) return res.status(400).json({ error: 'Photo must be a valid JPG, PNG, or WebP image under 10 MB.' });
-  const fields = ['title', 'category', 'location', 'date', 'description', 'photo'];
-  const values = fields.map(k => req.body[k] === undefined ? item[k] : req.body[k]);
+  const fields = ['title', 'category', 'location', 'date', 'description'];
+  const details = Object.fromEntries(fields.map(k => [k, body[k] === undefined ? item[k] : body[k]]));
+  if (!validItemDetails(details)) return res.status(400).json({ error: 'Check the item details and try again.' });
+  if (body.photo !== undefined && !validImageData(body.photo)) return res.status(400).json({ error: 'Photo must be a valid JPG, PNG, or WebP image under 10 MB.' });
+  const values = [...fields.map(k => typeof details[k] === 'string' ? details[k].trim() : details[k]), body.photo === undefined ? item.photo : body.photo];
   await q("UPDATE items SET title=?,category=?,location=?,date=?,description=?,photo=?,status=CASE WHEN ?=owner_id AND status='published' THEN 'pending' ELSE status END WHERE id=?", [...values, user(req).id, item.id]);
   res.json(publicItem(await get('SELECT * FROM items WHERE id=?', [item.id]), req));
 });
@@ -141,10 +151,11 @@ app.post('/api/items/:id/claims', requireStudent, async (req, res) => {
   const item = await get('SELECT * FROM items WHERE id=?', [req.params.id]);
   if (!item || item.status !== 'published') return res.status(404).json({ error: 'This item is not available to claim.' });
   if (Number(item.owner_id) === Number(user(req).id)) return res.status(403).json({ error: 'You cannot claim your own listing.' });
-  if (!String(req.body.proof || '').trim()) return res.status(400).json({ error: 'Proof of ownership is required.' });
-  try { await q('INSERT INTO claims(item_id,claimant_id,proof) VALUES(?,?,?)', [item.id, user(req).id, String(req.body.proof).trim()]); res.status(201).json({ ok: true }); }
+  if (typeof req.body?.proof !== 'string' || !req.body.proof.trim() || req.body.proof.trim().length > 1200) return res.status(400).json({ error: 'Enter proof of ownership in 1,200 characters or fewer.' });
+  try { await q('INSERT INTO claims(item_id,claimant_id,proof) VALUES(?,?,?)', [item.id, user(req).id, req.body.proof.trim()]); res.status(201).json({ ok: true }); }
   catch { res.status(409).json({ error: 'You already submitted a claim for this item.' }); }
 });
+app.get('/api/my/claims', requireStudent, async (req, res) => res.json(await all('SELECT c.id,c.item_id,c.status,c.submitted_at,i.title FROM claims c JOIN items i ON i.id=c.item_id WHERE c.claimant_id=? ORDER BY c.submitted_at DESC', [user(req).id])));
 app.get('/api/staff/claims', requireStaff, async (req, res) => res.json(await all('SELECT c.id,c.item_id,c.claimant_id,c.proof,c.status,c.submitted_at,u.email,i.title FROM claims c JOIN users u ON u.id=c.claimant_id JOIN items i ON i.id=c.item_id ORDER BY c.submitted_at DESC')));
 app.patch('/api/staff/items/:id/status', requireStaff, async (req, res) => {
   if (!['published', 'expired'].includes(req.body.status)) return res.status(400).json({ error: 'Invalid item status.' });

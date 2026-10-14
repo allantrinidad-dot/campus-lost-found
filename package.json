@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "start:production": "node server.js",
-    "test": "node --test expiration.test.js claim.test.js permissions.test.js workflow.test.js persistence.test.js seed.test.js frontend.test.js invitation.test.js",
+    "test": "node --test expiration.test.js claim.test.js permissions.test.js workflow.test.js persistence.test.js seed.test.js frontend.test.js invitation.test.js dashboard.test.js responsive.test.js",
     "seed:demo": "node seed-demo.js",
     "seed:sample": "node seed-sample-data.js"
   },
