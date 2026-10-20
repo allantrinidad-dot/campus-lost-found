@@ -47,6 +47,14 @@ function show(id) {
   const focusDialog = () => $(id).querySelector('input,button,select,textarea')?.focus();
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusDialog); else setTimeout(focusDialog, 0);
 }
+function switchModal(id) {
+  document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(modal => modal.classList.add('hidden'));
+  $(id).classList.remove('hidden');
+  document.body.classList.add('modal-open');
+  history.replaceState({ modal: id }, '');
+  const focusDialog = () => $(id).querySelector('input,button,select,textarea')?.focus();
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(focusDialog); else setTimeout(focusDialog, 0);
+}
 function closeDialogs() {
   document.querySelectorAll('.modal-backdrop:not(.hidden)').forEach(modal => modal.classList.add('hidden'));
   $('staffPanel').classList.add('hidden');
@@ -111,13 +119,61 @@ function renderItem(item) {
   const canManage = currentUser?.role === 'staff' || item.canEdit;
   const statusLabel = `<span class="status-label ${item.status === 'pending' ? 'pending' : ''}">${escapeHtml(item.status)}</span>`;
   const actions = [];
-  if (item.status === 'published') actions.push(`<button class="claim-button claim-action" data-claim="${Number(item.id)}">${currentUser ? 'This might be mine' : 'Sign in to claim'} <span aria-hidden="true">→</span></button>`);
   if (canManage) {
     actions.push(`<button class="item-action" data-edit="${Number(item.id)}">Edit</button>`);
     actions.push(`<button class="item-action" data-delete="${Number(item.id)}">Delete</button>`);
   }
   if (currentUser?.role === 'staff' && item.status === 'pending') actions.push(`<button class="item-action" data-publish="${Number(item.id)}">Publish</button>`);
-  return `<article class="item-card"><div class="item-image">${image}<span class="category-pill">${escapeHtml(item.category)}</span></div><div class="item-content"><div class="item-meta"><span>${daysAgo(item.date) === 0 ? 'Today' : `${daysAgo(item.date)} days ago`}</span><span aria-hidden="true">·</span><span>${escapeHtml(formatDate(item.date))}</span>${canManage ? statusLabel : ''}</div><h3>${escapeHtml(item.title)}</h3><p class="location"><span aria-hidden="true">⌖</span> ${escapeHtml(item.location)}</p><p>${escapeHtml(item.description)}</p>${actions.length ? `<div class="item-actions">${actions.join('')}</div>` : ''}</div></article>`;
+  return `<article class="item-card"><button class="item-card-details" type="button" data-item-details="${Number(item.id)}" aria-haspopup="dialog" aria-label="View details for ${escapeHtml(item.title)}"><span class="item-image">${image}<span class="category-pill">${escapeHtml(item.category)}</span></span><span class="item-content"><span class="item-meta"><span>${daysAgo(item.date) === 0 ? 'Today' : `${daysAgo(item.date)} days ago`}</span><span aria-hidden="true">·</span><span>${escapeHtml(formatDate(item.date))}</span>${canManage ? statusLabel : ''}</span><span class="item-card-title">${escapeHtml(item.title)}</span><span class="location"><span aria-hidden="true">⌖</span> ${escapeHtml(item.location)}</span><span class="item-description">${escapeHtml(item.description)}</span><span class="item-detail-link">View item details <span aria-hidden="true">→</span></span></span></button>${actions.length ? `<div class="item-actions">${actions.join('')}</div>` : ''}</article>`;
+}
+
+function listingStatusLabel(status) {
+  return ({ published: 'Available for claims', pending: 'Awaiting staff review', claimed: 'Claim approved', collected: 'Returned to owner', expired: 'Expired' })[status] || 'Status unavailable';
+}
+
+function ownClaimFor(item) {
+  if (currentUser?.role !== 'student') return null;
+  return myClaims.find(claim => Number(claim.item_id) === Number(item.id)) || null;
+}
+
+function renderItemDetails(item) {
+  const photo = item.photo
+    ? `<img class="details-photo" src="${escapeHtml(item.photo)}" alt="${escapeHtml(item.title)}" />`
+    : `<div class="details-photo image-placeholder" role="img" aria-label="No photo available"><span aria-hidden="true">${escapeHtml(item.emoji || '📦')}</span></div>`;
+  const ownClaim = ownClaimFor(item);
+  const itemClaims = currentUser?.role === 'staff' ? claims.filter(claim => Number(claim.item_id) === Number(item.id)) : [];
+  const claimStatus = ownClaim
+    ? `<p class="details-claim-status"><strong>Your claim:</strong> ${escapeHtml(ownClaim.status)}</p>`
+    : itemClaims.length
+      ? `<p class="details-claim-status"><strong>Claim status:</strong> ${itemClaims.map(claim => escapeHtml(claim.status)).join(', ')}</p>`
+      : currentUser?.role === 'student' && !item.canEdit && item.status === 'published'
+        ? '<p class="details-claim-status"><strong>Your claim:</strong> None submitted</p>'
+        : '';
+  const canClaim = currentUser?.role === 'student' && !item.canEdit && item.status === 'published' && !ownClaim;
+  const signInToClaim = !currentUser && item.status === 'published';
+  const claimButton = canClaim
+    ? `<button class="button primary" type="button" data-details-claim="${Number(item.id)}">Submit a claim <span aria-hidden="true">→</span></button>`
+    : signInToClaim
+      ? '<button class="button primary" type="button" data-details-sign-in>Sign in to claim <span aria-hidden="true">→</span></button>'
+      : '';
+  $('itemDetailsContent').innerHTML = `${photo}<div class="details-copy"><p class="eyebrow"><span class="eyebrow-rule"></span> Found item</p><h2 id="itemDetailsHeading">${escapeHtml(item.title)}</h2><p class="details-description">${escapeHtml(item.description)}</p><dl class="details-facts"><div><dt>Category</dt><dd>${escapeHtml(item.category)}</dd></div><div><dt>Location</dt><dd>${escapeHtml(item.location)}</dd></div><div><dt>Date found</dt><dd>${escapeHtml(formatDate(item.date))}</dd></div><div><dt>Listing status</dt><dd>${escapeHtml(listingStatusLabel(item.status))}</dd></div></dl>${claimStatus ? `<div class="details-claim-box">${claimStatus}</div>` : ''}<div class="details-actions">${claimButton}<button class="button secondary" type="button" data-close>Back to listings</button></div></div>`;
+}
+
+function openItemDetails(itemId) {
+  const item = items.find(entry => Number(entry.id) === Number(itemId));
+  if (!item) return;
+  renderItemDetails(item);
+  show('itemDetailsModal');
+}
+
+function openClaimForm(item, fromDetails = false) {
+  selectedClaimItem = Number(item.id);
+  $('claimItemName').textContent = `You’re claiming “${item.title}”. Add a detail that helps staff confirm it belongs to you.`;
+  $('claimAccountEmail').textContent = `Submitting as ${currentUser.email}`;
+  $('claimMessage').classList.add('hidden');
+  $('claimProof').value = '';
+  if (fromDetails) switchModal('claimModal');
+  else show('claimModal');
 }
 
 function renderStudentDashboard() {
@@ -266,16 +322,26 @@ document.addEventListener('click', async event => {
       $('dateFilter').value = 'all';
       return render();
     }
+    const detailsButton = target.closest('[data-item-details]');
+    if (detailsButton) return openItemDetails(Number(detailsButton.dataset.itemDetails));
+    const detailsClaim = target.closest('[data-details-claim]');
+    if (detailsClaim) {
+      const item = items.find(entry => Number(entry.id) === Number(detailsClaim.dataset.detailsClaim));
+      if (item && currentUser?.role === 'student' && !item.canEdit && item.status === 'published' && !ownClaimFor(item)) openClaimForm(item, true);
+      return;
+    }
+    if (target.closest('[data-details-sign-in]')) {
+      setAuthMode('login');
+      $('authMessage').textContent = 'Sign in with a student account to submit a claim.';
+      $('authMessage').classList.remove('hidden');
+      return switchModal('authModal');
+    }
     const claimButton = target.closest('[data-claim]');
     if (claimButton) {
       if (!currentUser) { setAuthMode('login'); show('authModal'); $('authMessage').textContent = 'Sign in to submit a claim. Your details stay private.'; $('authMessage').classList.remove('hidden'); return; }
-      selectedClaimItem = Number(claimButton.dataset.claim);
-      const item = items.find(entry => Number(entry.id) === selectedClaimItem);
-      $('claimItemName').textContent = item ? `You’re claiming “${item.title}”. Add a detail that helps staff confirm it belongs to you.` : 'Add a detail that helps staff confirm this item belongs to you.';
-      $('claimAccountEmail').textContent = `Submitting as ${currentUser.email}`;
-      $('claimMessage').classList.add('hidden');
-      $('claimProof').value = '';
-      return show('claimModal');
+      const item = items.find(entry => Number(entry.id) === Number(claimButton.dataset.claim));
+      if (item && currentUser.role === 'student' && !item.canEdit && item.status === 'published' && !ownClaimFor(item)) openClaimForm(item);
+      return;
     }
     const publish = target.closest('[data-publish]');
     if (publish) {
